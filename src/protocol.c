@@ -3,11 +3,16 @@
 #include "crc.h"
 #include "unistd.h"
 
-static packet_handler packet_handlers[] = {
-	[0] = NULL,
-	[MESSAGE_ESTOP] = NULL,
-	[MESSAGE_DRIVE_PWM] = NULL,
-	[MESSAGE_PWM_HIGH] = NULL,
+struct packet_handler_with_context {
+	packet_handler handler;
+	void *context;
+};
+
+static struct packet_handler_with_context packet_handlers[] = {
+	[0] = {NULL, NULL},
+	[MESSAGE_ESTOP] = {NULL, NULL},
+	[MESSAGE_DRIVE_PWM] = {NULL, NULL},
+	[MESSAGE_PWM_HIGH] = {NULL, NULL},
 };
 
 static int packet_type_to_payload_size(uint16_t type) {
@@ -69,9 +74,9 @@ void process_messages(const uint8_t *data, int size) {
 				continue;
 			}
 
-			packet_handler handler = packet_handlers[*packet_type];
-			if (handler != NULL) {
-				handler(&packet);
+			struct packet_handler_with_context *reg = &packet_handlers[*packet_type];
+			if (reg->handler != NULL) {
+				reg->handler(&packet, reg->context);
 			}
 
 			// reset buffer
@@ -93,8 +98,10 @@ void process_messages(const uint8_t *data, int size) {
  * @param handler the handler function with one argument which is a pointer to the received packet,
  *                the packet must not be accessed upon returning from the handler
  */
-void set_packet_handler(enum packet_type type, packet_handler handler) {
-	packet_handlers[type] = handler;
+void set_packet_handler(enum packet_type type, packet_handler handler, void *context) {
+	struct packet_handler_with_context *reg = &packet_handlers[type];
+	reg->handler = handler;
+	reg->context = context;
 }
 
 /**

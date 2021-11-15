@@ -105,9 +105,9 @@ static_assert(
 
 void process_messages(const uint8_t *data, int size);
 
-typedef void (*packet_handler)(const union packet *packet);
+typedef void (*packet_handler)(const union packet *packet, void *context);
 
-void set_packet_handler(enum packet_type type, packet_handler handler);
+void set_packet_handler(enum packet_type type, packet_handler handler, void *context);
 
 bool send_packet(int fd, union packet *packet);
 

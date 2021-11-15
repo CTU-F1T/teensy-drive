@@ -2,6 +2,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <thread>
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/bool.hpp"
@@ -9,6 +10,13 @@
 #include "f1tenth_race/msg/drive_values.hpp"
 
 #include "protocol.h"
+#include "serial_port.hpp"
+
+#include <unistd.h>
+
+#include "utils.h"
+
+#include <poll.h>
 
 using namespace std::chrono_literals;
 
@@ -25,6 +33,15 @@ public:
 
 		std::string port = declare_parameter<std::string>("port", "", port_param_desc);
 
+		// attempt to connect to the serial port
+		try {
+			serial_port_.open(port);
+		} catch (const std::runtime_error &e) {
+			RCLCPP_FATAL(get_logger(), "failed to open the serial port: %s", e.what());
+			rclcpp::shutdown();
+			return;
+		}
+
 		// see https://roboticsbackend.com/ros2-rclcpp-parameter-callback/
 		parameters_callback_handle_ = add_on_set_parameters_callback(
 			[this](const auto &p) { return parameters_callback(p); }
@@ -32,6 +49,10 @@ public:
 
 		pwm_high_publisher_ = create_publisher<f1tenth_race::msg::PwmHigh>(
 			"/pwm_high",
+			1
+		);
+		estop_publisher_ = create_publisher<std_msgs::msg::Bool>(
+			"/eStop",
 			1
 		);
 		estop_subscription_ = create_subscription<std_msgs::msg::Bool>(
@@ -55,12 +76,140 @@ public:
 			[this] { timer_callback(); }
 		);
 
+		packet_thread_run_ = true;
+		packet_thread_ = std::make_unique<std::thread>(
+			[this]() {
+				receive_packets();
+			}
+		);
+
+	}
+
+	~TeensyDrive() override {
+
+		debug("TeensyDrive destructor");
+
+		if (packet_thread_) {
+			packet_thread_run_ = false;
+			packet_thread_->join();
+		}
+
 	}
 
 private:
 
+	void receive_packets() {
+		debug("receive_packets");
+
+		set_packet_handler(
+			MESSAGE_PWM_HIGH,
+			static_cast<packet_handler>([](const union packet *packet, void *context) {
+				debug("3");
+				auto _this = reinterpret_cast<TeensyDrive *>(context);
+				_this->handle_pwm_high_packet(reinterpret_cast<const struct packet_message_pwm_high *>(packet));
+			}),
+			(void *) this
+		);
+		// auto h2 = [this](const union packet &p) {
+		// 	handle_pwm_high_packet((const struct packet_message_pwm_high &) p);
+		// };
+		// set_packet_handler(MESSAGE_ESTOP, reinterpret_cast<packet_handler>(&h2));
+		debug("2");
+		enum {
+			DEV
+		};
+		struct pollfd fds[1] = {
+			[DEV]   = {.fd = serial_port_.getFd(), .events = POLLIN},
+		};
+
+		int result;
+
+		unsigned char buffer[4095];
+
+		while (packet_thread_run_) {
+
+			result = poll(fds, 1, 1000);
+
+			if (result == 0) {
+				// printf("poll timeout expired\n");
+				continue;
+			}
+
+			if (result == -1) {
+				if (errno == EINTR) {
+					// placing debugger point sends signal
+					continue;
+				}
+				// printf("poll failed: %s\n", strerror(errno));
+				debug("poll failed");
+				break;
+			}
+
+			if (fds[DEV].revents & POLLERR) {
+				debug("poll DEV POLLERR");
+			}
+
+			if (fds[DEV].revents & POLLHUP) {
+				debug("poll DEV POLLHUP\n");
+				debug("device disconnected\n");
+				break;
+			}
+
+			if (fds[DEV].revents & POLLIN) {
+
+				result = (int) ::read(serial_port_.getFd(), buffer, sizeof(buffer));
+
+				if (result > 0) {
+					// debug_printf("read %d bytes from device\n", result);
+					// print_bytes(buffer, result);
+					process_messages(buffer, result);
+				} else {
+					// debug_printf("read result: %d\n", result);
+					// result == 0 -> EOF (but this should not happen as in such a case POLLHUP event should be emitted)
+					// result == -1 -> error
+					debug("read failed");
+					break;
+				}
+
+			}
+
+		}
+	}
+
+	void handle_pwm_high_packet(const struct packet_message_pwm_high *msg) {
+		debug("4");
+		RCLCPP_INFO(
+			get_logger(),
+			"handle_pwm_high_msg: period_thr=%d period_str=%d\n",
+			(int) msg->payload.period_thr, (int) msg->payload.period_str
+		);
+		debug("5");
+		debug("period_thr = " << msg->payload.period_thr << " period_str = " << msg->payload.period_str);
+		msg_pwm_high_.period_thr = msg->payload.period_thr;
+		msg_pwm_high_.period_str = msg->payload.period_str;
+		debug("6");
+		pwm_high_publisher_->publish(msg_pwm_high_);
+		debug("7");
+	}
+
+	void handle_estop_packet(const struct packet_message_bool &msg) {
+		RCLCPP_INFO(
+			get_logger(),
+			"handle_estop_msg: %d\n",
+			msg.payload.data
+		);
+		msg_estop_.data = msg.payload.data;
+		estop_publisher_->publish(msg_estop_);
+	}
+
 	void estop_callback(const std_msgs::msg::Bool::ConstSharedPtr &msg) const {
 		RCLCPP_INFO(get_logger(), "estop_callback: data=%d", msg->data);
+		struct packet_message_bool packet{
+			MESSAGE_ESTOP,
+			{msg->data},
+			0,
+		};
+		send_packet(serial_port_.getFd(), reinterpret_cast<union packet *>(&packet));
 	}
 
 	void drive_pwm_callback(const f1tenth_race::msg::DriveValues::ConstSharedPtr &msg) const {
@@ -69,10 +218,20 @@ private:
 			"drive_pwm_callback: pwm_drive=%d pwm_angle=%d",
 			msg->pwm_drive, msg->pwm_angle
 		);
+		struct packet_message_drive_values packet{
+			MESSAGE_DRIVE_PWM,
+			{
+				msg->pwm_drive,
+				msg->pwm_angle,
+			},
+			0,
+		};
+		send_packet(serial_port_.getFd(), reinterpret_cast<union packet *>(&packet));
 	}
 
 	void timer_callback() {
 		RCLCPP_INFO(get_logger(), "timer_callback");
+		// pwm_high_publisher_->publish(msg_pwm_high_);
 	}
 
 	// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
@@ -92,10 +251,26 @@ private:
 	}
 
 	rclcpp::TimerBase::SharedPtr timer_;
+
+	// publishers
 	rclcpp::Publisher<f1tenth_race::msg::PwmHigh>::SharedPtr pwm_high_publisher_;
+	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr estop_publisher_;
+
+	// pre-allocated messages to publish
+	f1tenth_race::msg::PwmHigh msg_pwm_high_;
+	std_msgs::msg::Bool msg_estop_;
+
+	// subscriptions
 	rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr estop_subscription_;
 	rclcpp::Subscription<f1tenth_race::msg::DriveValues>::SharedPtr drive_pwm_subscription_;
+
+	// parameters change callback
 	OnSetParametersCallbackHandle::SharedPtr parameters_callback_handle_;
+
+	SerialPort serial_port_;
+	// serial port packet receiving thread
+	volatile bool packet_thread_run_;
+	std::unique_ptr<std::thread> packet_thread_;
 
 };
 

@@ -29,6 +29,7 @@ find_package(f1tenth_race REQUIRED)
 add_executable(teensy_drive
   "src/crc.c"
   "src/protocol.c"
+  "src/serial_port.cpp"
   "src/main.cpp"
 )
 ament_target_dependencies(teensy_drive
