@@ -29,6 +29,7 @@ public:
 
 		rcl_interfaces::msg::ParameterDescriptor port_param_desc;
 		port_param_desc.type = rcl_interfaces::msg::ParameterType::PARAMETER_BOOL;
+		port_param_desc.read_only = true;
 		port_param_desc.description = "teensy-drive device port name";
 
 		std::string port = declare_parameter<std::string>("port", "", port_param_desc);
@@ -71,10 +72,10 @@ public:
 				drive_pwm_callback(msg);
 			}
 		);
-		timer_ = this->create_wall_timer(
-			500ms,
-			[this] { timer_callback(); }
-		);
+		// timer_ = this->create_wall_timer(
+		// 	500ms,
+		// 	[this] { timer_callback(); }
+		// );
 
 		packet_thread_run_ = true;
 		packet_thread_ = std::make_unique<std::thread>(
@@ -104,17 +105,19 @@ private:
 		set_packet_handler(
 			MESSAGE_PWM_HIGH,
 			static_cast<packet_handler>([](const union packet *packet, void *context) {
-				debug("3");
 				auto _this = reinterpret_cast<TeensyDrive *>(context);
 				_this->handle_pwm_high_packet(reinterpret_cast<const struct packet_message_pwm_high *>(packet));
 			}),
 			(void *) this
 		);
-		// auto h2 = [this](const union packet &p) {
-		// 	handle_pwm_high_packet((const struct packet_message_pwm_high &) p);
-		// };
-		// set_packet_handler(MESSAGE_ESTOP, reinterpret_cast<packet_handler>(&h2));
-		debug("2");
+		set_packet_handler(
+			MESSAGE_ESTOP,
+			static_cast<packet_handler>([](const union packet *packet, void *context) {
+				auto _this = reinterpret_cast<TeensyDrive *>(context);
+				_this->handle_estop_packet(reinterpret_cast<const struct packet_message_bool *>(packet));
+			}),
+			(void *) this
+		);
 		enum {
 			DEV
 		};
@@ -177,28 +180,19 @@ private:
 	}
 
 	void handle_pwm_high_packet(const struct packet_message_pwm_high *msg) {
-		debug("4");
-		RCLCPP_INFO(
-			get_logger(),
-			"handle_pwm_high_msg: period_thr=%d period_str=%d\n",
-			(int) msg->payload.period_thr, (int) msg->payload.period_str
-		);
-		debug("5");
-		debug("period_thr = " << msg->payload.period_thr << " period_str = " << msg->payload.period_str);
+		// RCLCPP_INFO(
+		// 	get_logger(),
+		// 	"handle_pwm_high_msg: period_thr=%d period_str=%d\n",
+		// 	(int) msg->payload.period_thr, (int) msg->payload.period_str
+		// );
 		msg_pwm_high_.period_thr = msg->payload.period_thr;
 		msg_pwm_high_.period_str = msg->payload.period_str;
-		debug("6");
 		pwm_high_publisher_->publish(msg_pwm_high_);
-		debug("7");
 	}
 
-	void handle_estop_packet(const struct packet_message_bool &msg) {
-		RCLCPP_INFO(
-			get_logger(),
-			"handle_estop_msg: %d\n",
-			msg.payload.data
-		);
-		msg_estop_.data = msg.payload.data;
+	void handle_estop_packet(const struct packet_message_bool *msg) {
+		RCLCPP_INFO(get_logger(), "handle_estop_msg: data=%d", msg->payload.data);
+		msg_estop_.data = msg->payload.data;
 		estop_publisher_->publish(msg_estop_);
 	}
 
@@ -213,11 +207,11 @@ private:
 	}
 
 	void drive_pwm_callback(const f1tenth_race::msg::DriveValues::ConstSharedPtr &msg) const {
-		RCLCPP_INFO(
-			get_logger(),
-			"drive_pwm_callback: pwm_drive=%d pwm_angle=%d",
-			msg->pwm_drive, msg->pwm_angle
-		);
+		// RCLCPP_DEBUG(
+		// 	get_logger(),
+		// 	"drive_pwm_callback: pwm_drive=%d pwm_angle=%d",
+		// 	msg->pwm_drive, msg->pwm_angle
+		// );
 		struct packet_message_drive_values packet{
 			MESSAGE_DRIVE_PWM,
 			{
@@ -229,14 +223,14 @@ private:
 		send_packet(serial_port_.getFd(), reinterpret_cast<union packet *>(&packet));
 	}
 
-	void timer_callback() {
-		RCLCPP_INFO(get_logger(), "timer_callback");
-		// pwm_high_publisher_->publish(msg_pwm_high_);
-	}
+	// void timer_callback() {
+	// 	RCLCPP_INFO(get_logger(), "timer_callback");
+	// 	// pwm_high_publisher_->publish(msg_pwm_high_);
+	// }
 
 	// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 	rcl_interfaces::msg::SetParametersResult parameters_callback(
-		const std::vector<rclcpp::Parameter> &parameters
+		const std::vector<rclcpp::Parameter> &/* parameters */
 	) {
 
 		// see comments for reconfigure_callback
@@ -250,7 +244,7 @@ private:
 
 	}
 
-	rclcpp::TimerBase::SharedPtr timer_;
+	// rclcpp::TimerBase::SharedPtr timer_;
 
 	// publishers
 	rclcpp::Publisher<f1tenth_race::msg::PwmHigh>::SharedPtr pwm_high_publisher_;
