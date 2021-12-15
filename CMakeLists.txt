@@ -23,7 +23,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(f1tenth_race REQUIRED)
+find_package(teensy_drive_msgs REQUIRED)
 
 # add teensy_drive node executable
 add_executable(teensy_drive
@@ -35,7 +35,7 @@ add_executable(teensy_drive
 ament_target_dependencies(teensy_drive
   rclcpp
   std_msgs
-  f1tenth_race
+  teensy_drive_msgs
 )
 
 # install launch files

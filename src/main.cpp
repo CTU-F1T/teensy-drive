@@ -6,8 +6,8 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/bool.hpp"
-#include "f1tenth_race/msg/pwm_high.hpp"
-#include "f1tenth_race/msg/drive_values.hpp"
+#include "teensy_drive_msgs/msg/pwm_high.hpp"
+#include "teensy_drive_msgs/msg/drive_values.hpp"
 
 #include "protocol.h"
 #include "serial_port.hpp"
@@ -48,7 +48,7 @@ public:
 			[this](const auto &p) { return parameters_callback(p); }
 		);
 
-		pwm_high_publisher_ = create_publisher<f1tenth_race::msg::PwmHigh>(
+		pwm_high_publisher_ = create_publisher<teensy_drive_msgs::msg::PwmHigh>(
 			"/pwm_high",
 			1
 		);
@@ -64,11 +64,11 @@ public:
 				estop_callback(msg);
 			}
 		);
-		drive_pwm_subscription_ = create_subscription<f1tenth_race::msg::DriveValues>(
+		drive_pwm_subscription_ = create_subscription<teensy_drive_msgs::msg::DriveValues>(
 			"/drive_pwm",
 			1,
 			// NOLINTNEXTLINE(performance-unnecessary-value-param)
-			[this](const f1tenth_race::msg::DriveValues::ConstSharedPtr msg) {
+			[this](const teensy_drive_msgs::msg::DriveValues::ConstSharedPtr msg) {
 				drive_pwm_callback(msg);
 			}
 		);
@@ -206,7 +206,7 @@ private:
 		send_packet(serial_port_.getFd(), reinterpret_cast<union packet *>(&packet));
 	}
 
-	void drive_pwm_callback(const f1tenth_race::msg::DriveValues::ConstSharedPtr &msg) const {
+	void drive_pwm_callback(const teensy_drive_msgs::msg::DriveValues::ConstSharedPtr &msg) const {
 		// RCLCPP_DEBUG(
 		// 	get_logger(),
 		// 	"drive_pwm_callback: pwm_drive=%d pwm_angle=%d",
@@ -247,16 +247,16 @@ private:
 	// rclcpp::TimerBase::SharedPtr timer_;
 
 	// publishers
-	rclcpp::Publisher<f1tenth_race::msg::PwmHigh>::SharedPtr pwm_high_publisher_;
+	rclcpp::Publisher<teensy_drive_msgs::msg::PwmHigh>::SharedPtr pwm_high_publisher_;
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr estop_publisher_;
 
 	// pre-allocated messages to publish
-	f1tenth_race::msg::PwmHigh msg_pwm_high_;
+	teensy_drive_msgs::msg::PwmHigh msg_pwm_high_;
 	std_msgs::msg::Bool msg_estop_;
 
 	// subscriptions
 	rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr estop_subscription_;
-	rclcpp::Subscription<f1tenth_race::msg::DriveValues>::SharedPtr drive_pwm_subscription_;
+	rclcpp::Subscription<teensy_drive_msgs::msg::DriveValues>::SharedPtr drive_pwm_subscription_;
 
 	// parameters change callback
 	OnSetParametersCallbackHandle::SharedPtr parameters_callback_handle_;
