@@ -14,7 +14,8 @@ extern "C" {
 //   max size = 2 + 4 + 2 = 8 bytes
 //
 //   structure
-//     uint16_t type
+//     uint8_t type
+//     uint8_t size
 //     uint8_t payload[1 - 4]
 //     uint16_t checksum // big endian (MSB first)
 //
@@ -24,7 +25,8 @@ struct message_bool {
 };
 
 struct packet_message_bool {
-	uint16_t type;
+	uint8_t type;
+	uint8_t size;
 	struct message_bool payload;
 	uint16_t checksum; // big endian (MSB first)
 } __attribute__((__packed__));
@@ -35,7 +37,8 @@ struct message_drive_values {
 };
 
 struct packet_message_drive_values {
-	uint16_t type;
+	uint8_t type;
+	uint8_t size;
 	struct message_drive_values payload;
 	uint16_t checksum; // big endian (MSB first)
 } __attribute__((__packed__));
@@ -46,7 +49,8 @@ struct message_pwm_high {
 };
 
 struct packet_message_pwm_high {
-	uint16_t type;
+	uint8_t type;
+	uint8_t size;
 	struct message_pwm_high payload;
 	uint16_t checksum; // big endian (MSB first)
 } __attribute__((__packed__));
@@ -64,10 +68,12 @@ enum packet_type {
 };
 
 const static int packet_type_to_payload_size_table[] = {
-	[0] = -1,
-	[MESSAGE_ESTOP] = sizeof(struct message_bool),
-	[MESSAGE_DRIVE_PWM] = sizeof(struct message_drive_values),
-	[MESSAGE_PWM_HIGH] = sizeof(struct message_pwm_high),
+	// designated initializers are only available in C99 or C++20+
+	// when this header file is used in C++ designated initializers cannot be used
+	/* [0] = */ -1,
+	/* [MESSAGE_ESTOP] = */ sizeof(struct message_bool),
+	/* [MESSAGE_DRIVE_PWM] = */ sizeof(struct message_drive_values),
+	/* [MESSAGE_PWM_HIGH] = */ sizeof(struct message_pwm_high),
 };
 
 #define packet_max_size sizeof(union packet)

@@ -6,7 +6,6 @@
 #ifdef NDEBUG
 #define debug(x) ((void) 0)
 #else
-
 #define debug(x) std::cerr << x << std::endl
 #endif
 
@@ -15,6 +14,8 @@
 #ifdef NDEBUG
 #define debug_printf(...) ((void) 0)
 #else
+#include <stdlib.h>
+#include <stdio.h>
 #define debug_printf(...) fprintf(stdout, __VA_ARGS__)
 #endif
 

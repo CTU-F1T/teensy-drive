@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include "protocol.h"
 #include "crc.h"
+#include "utils.h"
 #include "unistd.h"
 
 struct packet_handler_with_context {
@@ -15,7 +16,7 @@ static struct packet_handler_with_context packet_handlers[] = {
 	[MESSAGE_PWM_HIGH] = {NULL, NULL},
 };
 
-static int packet_type_to_payload_size(uint16_t type) {
+static int packet_type_to_payload_size(uint8_t type) {
 
 	if (type >= sizeof(packet_type_to_payload_size_table)) {
 		return -1;
@@ -32,11 +33,12 @@ void process_messages(const uint8_t *data, int size) {
 
 	static const int payload_max_size = packet_max_size - 4;
 	static union packet packet;
-	static uint16_t *packet_type = ((uint16_t *) &packet);
 	static uint8_t *buffer = (uint8_t *) &packet;
+	static uint8_t *packet_type = ((uint8_t *) &packet);
+	static uint8_t *packet_size_field = ((uint8_t *) &packet) + 1;
 	static int buffer_size = 0;
+	static int expected_packet_size = 0;
 	static int payload_size = 0;
-	static int packet_size = 0;
 
 	const uint8_t *data_end_ptr = data + size;
 	const uint8_t *byte_ptr = data;
@@ -48,19 +50,34 @@ void process_messages(const uint8_t *data, int size) {
 		// save byte to buffer and then increase buffer index
 		buffer[buffer_size++] = byte;
 
+		// once we have packet size field we confirm it against the expected size
+		if (buffer_size == 2 && *packet_size_field != expected_packet_size) {
+			// shift buffer by one byte
+			//   this effectively means that we drop only the packet type value
+			//   and consider the size value as packet type
+			debug_printf(
+				"packet_size_field (%02x) != expected_packet_size (%02x)\n",
+				*packet_size_field, expected_packet_size
+			);
+			buffer[0] = buffer[1];
+			buffer_size = 1;
+			// no continue here so the if (buffer_size == 1) can be evaluated (it will be true)
+		}
+
 		// once we have packet type we validate it and use it to determine the packet payload size
-		if (buffer_size == 2) {
-			payload_size = packet_type_to_payload_size(*((uint16_t *) &packet));
-			packet_size = 2 + payload_size + 2;
+		if (buffer_size == 1) {
+			payload_size = packet_type_to_payload_size(*packet_type);
+			expected_packet_size = 2 + payload_size + 2;
 			if (payload_size < 1 || payload_size > payload_max_size) {
 				// reset buffer index on invalid packet type (drops packet type)
+				debug_printf("invalid packet type %02x\n", *packet_type);
 				buffer_size = 0;
 			}
 			continue;
 		}
 
 		// packet is complete
-		if (buffer_size == packet_size) {
+		if (buffer_size == expected_packet_size) {
 
 			// validate checksum
 			uint16_t checksum = crc16(buffer, buffer_size);
@@ -68,7 +85,7 @@ void process_messages(const uint8_t *data, int size) {
 			// if we calculate CRC over the whole packet (including the checksum) it must equal to 0
 			if (checksum != 0) {
 				// broken packet
-				// TODO: maybe log
+				debug_printf("broken packet\n");
 				// reset buffer
 				buffer_size = 0;
 				continue;
@@ -116,7 +133,7 @@ void set_packet_handler(enum packet_type type, packet_handler handler, void *con
  */
 bool send_packet(int fd, union packet *packet) {
 
-	uint16_t type = *((uint16_t *) packet); // first two bytes are packet type
+	uint8_t type = *((uint8_t *) packet); // first byte is the packet type
 	int payload_size = packet_type_to_payload_size(type);
 
 	if (payload_size == -1) {

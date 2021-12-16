@@ -121,8 +121,15 @@ private:
 		enum {
 			DEV
 		};
+		// struct pollfd fds[1] = {
+		// 	[DEV]   = {.fd = serial_port_.getFd(), .events = POLLIN},
+		// };
 		struct pollfd fds[1] = {
-			[DEV]   = {.fd = serial_port_.getFd(), .events = POLLIN},
+			{
+				serial_port_.getFd(),
+				POLLIN,
+				0,
+			},
 		};
 
 		int result;
@@ -200,6 +207,7 @@ private:
 		RCLCPP_INFO(get_logger(), "estop_callback: data=%d", msg->data);
 		struct packet_message_bool packet{
 			MESSAGE_ESTOP,
+			sizeof(struct packet_message_bool),
 			{msg->data},
 			0,
 		};
@@ -214,6 +222,7 @@ private:
 		// );
 		struct packet_message_drive_values packet{
 			MESSAGE_DRIVE_PWM,
+			sizeof(struct packet_message_drive_values),
 			{
 				msg->pwm_drive,
 				msg->pwm_angle,
