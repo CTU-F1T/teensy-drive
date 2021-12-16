@@ -67,7 +67,7 @@ enum packet_type {
 	MESSAGE_PWM_HIGH = 3,
 };
 
-const static int packet_type_to_payload_size_table[] = {
+static const int packet_type_to_payload_size_table[] = {
 	// designated initializers are only available in C99 or C++20+
 	// when this header file is used in C++ designated initializers cannot be used
 	/* [0] = */ -1,
