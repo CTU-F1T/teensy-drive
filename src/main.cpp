@@ -118,6 +118,14 @@ private:
 			}),
 			(void *) this
 		);
+		set_packet_handler(
+			MESSAGE_VERSION,
+			static_cast<packet_handler>([](const union packet *packet, void *context) {
+				auto _this = reinterpret_cast<TeensyDrive *>(context);
+				_this->handle_version_packet(reinterpret_cast<const struct packet_message_version *>(packet));
+			}),
+			(void *) this
+		);
 		enum {
 			DEV
 		};
@@ -131,6 +139,14 @@ private:
 				0,
 			},
 		};
+
+		struct packet_message_version packet{
+			MESSAGE_VERSION,
+			sizeof(struct packet_message_version),
+			{"VERSION"},
+			0,
+		};
+		send_packet(serial_port_.getFd(), reinterpret_cast<union packet *>(&packet));
 
 		int result;
 
@@ -201,6 +217,10 @@ private:
 		RCLCPP_INFO(get_logger(), "handle_estop_msg: data=%d", msg->payload.data);
 		msg_estop_.data = msg->payload.data;
 		estop_publisher_->publish(msg_estop_);
+	}
+
+	void handle_version_packet(const struct packet_message_version *msg) {
+		RCLCPP_WARN(get_logger(), "Starting Teensy -- FW build %s", msg->payload.data);
 	}
 
 	void estop_callback(const std_msgs::msg::Bool::ConstSharedPtr &msg) const {
