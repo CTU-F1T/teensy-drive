@@ -1,4 +1,12 @@
-cmake_minimum_required(VERSION 3.5)
+set(ROS_VERSION $ENV{ROS_VERSION})
+
+if (NOT DEFINED ROS_VERSION OR '${ROS_VERSION} STREQUAL '1)
+    set (ROS_VERSION 1)
+    cmake_minimum_required(VERSION 2.8.3)
+else()
+    cmake_minimum_required(VERSION 3.3)
+endif()
+
 project(teensy_drive)
 
 # TODO: conditional setting of CMAKE_C_STANDARD does not work on macOS 10.14.6, cmake 3.21.4
@@ -19,36 +27,86 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# find dependencies
-find_package(ament_cmake REQUIRED)
-find_package(rclcpp REQUIRED)
-find_package(std_msgs REQUIRED)
-find_package(teensy_drive_msgs REQUIRED)
+set(dep_pkgs
+    std_msgs
+)
 
-# add teensy_drive node executable
-add_executable(teensy_drive
+set(dep_ros1_pkgs
+    f1tenth_race
+)
+
+set(dep_ros2_pkgs
+    teensy_drive_msgs
+)
+
+
+## Find catkin macros and libraries
+## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
+## is used, also find other catkin packages
+if (ROS_VERSION EQUAL 1)
+add_definitions(-DROS1_BUILD)
+find_package(catkin REQUIRED
+    roscpp
+    ${dep_pkgs}
+    ${dep_ros1_pkgs}
+)
+
+catkin_package(
+    CATKIN_DEPENDS
+    roscpp
+    ${dep_pkgs}
+    ${dep_ros1_pkgs}
+)
+
+add_executable(${PROJECT_NAME}_node
   "src/crc.c"
   "src/protocol.c"
   "src/serial_port.cpp"
   "src/main.cpp"
 )
-ament_target_dependencies(teensy_drive
-  rclcpp
-  std_msgs
-  teensy_drive_msgs
+
+include_directories(
+    ${catkin_INCLUDE_DIRS}
 )
 
-# install launch files
-# install(
-#   DIRECTORY launch
-#   DESTINATION share/${PROJECT_NAME}
-# )
+add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-# install nodes
+target_link_libraries(${PROJECT_NAME}_node
+   ${catkin_LIBRARIES}
+)
+
+elseif (ROS_VERSION EQUAL 2)
+add_definitions(-DROS2_BUILD)
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+
+foreach (pkg ${dep_pkgs})
+    find_package(${pkg} REQUIRED)
+endforeach()
+
+foreach (pkg ${dep_ros2_pkgs})
+    find_package(${pkg} REQUIRED)
+endforeach()
+
+add_executable(${PROJECT_NAME}_node
+  "src/crc.c"
+  "src/protocol.c"
+  "src/serial_port.cpp"
+  "src/main.cpp"
+)
+
+ament_target_dependencies(${PROJECT_NAME}_node
+  rclcpp
+  ${dep_pkgs}
+  ${dep_ros2_pkgs}
+)
+
 install(
-  TARGETS teensy_drive
+  TARGETS ${PROJECT_NAME}_node
   DESTINATION lib/${PROJECT_NAME}
 )
+
+ament_package()
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -61,4 +119,6 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-ament_package()
+else()
+    message(FATAL_ERROR "ROS_VERSION is not set.")
+endif()

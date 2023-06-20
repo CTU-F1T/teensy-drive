@@ -1,29 +1,57 @@
+#if ROS1_BUILD
+#include "ros/ros.h"
+#include "std_msgs/Bool.h"
+#include "f1tenth_race/pwm_high.h"
+#include "f1tenth_race/drive_values.h"
+#elif ROS2_BUILD
 #include <chrono>
 #include <functional>
 #include <memory>
-#include <string>
-#include <thread>
-
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "teensy_drive_msgs/msg/pwm_high.hpp"
 #include "teensy_drive_msgs/msg/drive_values.hpp"
+#endif // ROS2_BUILD
 
+#include <string>
+#include <thread>
 #include "protocol.h"
 #include "serial_port.hpp"
 
 #include <unistd.h>
 
+#if ROS1_BUILD
+#define debug(x) ROS_DEBUG(x)
+#define INFO(...) ROS_INFO(__VA_ARGS__)
+#define WARN(...) ROS_WARN(__VA_ARGS__)
+#define ERROR(...) ROS_ERROR(__VA_ARGS__)
+#define FATAL(...) ROS_ERROR(__VA_ARGS__)
+#elif ROS2_BUILD
 #include "utils.h"
+#define INFO(...) RCLCPP_INFO(get_logger(), __VA_ARGS__)
+#define WARN(...) RCLCPP_WARN(get_logger(), __VA_ARGS__)
+#define ERROR(...) RCLCPP_FATAL(get_logger(), __VA_ARGS__)
+#define FATAL(...) RCLCPP_FATAL(get_logger(), __VA_ARGS__)
+#endif // else ROS2_BUILD
 
+// poll, POLLERR, POLLHUP, POLLIN
 #include <poll.h>
 
+#if ROS1_BUILD
+class TeensyDrive {
+#elif ROS2_BUILD
 using namespace std::chrono_literals;
 
 class TeensyDrive : public rclcpp::Node {
+#endif // ROS2_BUILD
 
 public:
 
+#if ROS1_BUILD
+	TeensyDrive(ros::NodeHandle *n) {
+		std::string port;
+		n->getParam("port", port);
+#elif ROS2_BUILD
 	TeensyDrive()
 		: Node("teensy_drive") {
 
@@ -33,16 +61,43 @@ public:
 		port_param_desc.description = "teensy-drive device port name";
 
 		std::string port = declare_parameter<std::string>("port", "", port_param_desc);
+#endif // ROS2_BUILD
 
 		// attempt to connect to the serial port
 		try {
 			serial_port_.open(port);
 		} catch (const std::runtime_error &e) {
-			RCLCPP_FATAL(get_logger(), "failed to open the serial port: %s", e.what());
+			ERROR("failed to open the serial port: %s", e.what());
+#if ROS2_BUILD
 			rclcpp::shutdown();
+#endif // ROS2_BUILD
 			return;
 		}
 
+#if ROS1_BUILD
+		pwm_high_publisher_ = n->advertise<f1tenth_race::pwm_high>(
+			"/pwm_high",
+			1
+		);
+
+		estop_publisher_ = n->advertise<std_msgs::Bool>(
+			"/eStop",
+			1
+		);
+
+		sub_estop = n->subscribe<std_msgs::Bool>(
+			"/eStop",
+			1,
+			&TeensyDrive::estop_callback, this
+		);
+
+		sub_drive_pwm = n->subscribe<f1tenth_race::drive_values>(
+			"/drive_pwm",
+			1,
+			&TeensyDrive::drive_pwm_callback, this
+		);
+
+#elif ROS2_BUILD
 		// see https://roboticsbackend.com/ros2-rclcpp-parameter-callback/
 		parameters_callback_handle_ = add_on_set_parameters_callback(
 			[this](const auto &p) { return parameters_callback(p); }
@@ -72,6 +127,7 @@ public:
 				drive_pwm_callback(msg);
 			}
 		);
+#endif // ROS2_BUILD
 		// timer_ = this->create_wall_timer(
 		// 	500ms,
 		// 	[this] { timer_callback(); }
@@ -86,7 +142,11 @@ public:
 
 	}
 
+#if ROS1_BUILD
+	~TeensyDrive() {
+#elif ROS2_BUILD
 	~TeensyDrive() override {
+#endif // ROS2_BUILD
 
 		debug("TeensyDrive destructor");
 
@@ -210,21 +270,33 @@ private:
 		// );
 		msg_pwm_high_.period_thr = msg->payload.period_thr;
 		msg_pwm_high_.period_str = msg->payload.period_str;
+#if ROS1_BUILD
+		pwm_high_publisher_.publish(msg_pwm_high_);
+#elif ROS2_BUILD
 		pwm_high_publisher_->publish(msg_pwm_high_);
+#endif // ROS2_BUILD
 	}
 
 	void handle_estop_packet(const struct packet_message_bool *msg) {
-		RCLCPP_INFO(get_logger(), "handle_estop_msg: data=%d", msg->payload.data);
+		INFO("handle_estop_msg: data=%d", msg->payload.data);
 		msg_estop_.data = msg->payload.data;
+#if ROS1_BUILD
+		estop_publisher_.publish(msg_estop_);
+#elif ROS2_BUILD
 		estop_publisher_->publish(msg_estop_);
+#endif // ROS2_BUILD
 	}
 
 	void handle_version_packet(const struct packet_message_version *msg) {
-		RCLCPP_WARN(get_logger(), "Starting Teensy -- FW build %s", msg->payload.data);
+		WARN("Starting Teensy -- FW build %s", msg->payload.data);
 	}
 
+#if ROS1_BUILD
+	void estop_callback(const std_msgs::Bool::ConstPtr &msg) const {
+#elif ROS2_BUILD
 	void estop_callback(const std_msgs::msg::Bool::ConstSharedPtr &msg) const {
-		RCLCPP_INFO(get_logger(), "estop_callback: data=%d", msg->data);
+#endif // ROS2_BUILD
+		INFO("estop_callback: data=%d", msg->data);
 		struct packet_message_bool packet{
 			MESSAGE_ESTOP,
 			sizeof(struct packet_message_bool),
@@ -234,7 +306,11 @@ private:
 		send_packet(serial_port_.getFd(), reinterpret_cast<union packet *>(&packet));
 	}
 
+#if ROS1_BUILD
+	void drive_pwm_callback(const f1tenth_race::drive_values::ConstPtr &msg) const {
+#elif ROS2_BUILD
 	void drive_pwm_callback(const teensy_drive_msgs::msg::DriveValues::ConstSharedPtr &msg) const {
+#endif // ROS2_BUILD
 		// RCLCPP_DEBUG(
 		// 	get_logger(),
 		// 	"drive_pwm_callback: pwm_drive=%d pwm_angle=%d",
@@ -257,6 +333,7 @@ private:
 	// 	// pwm_high_publisher_->publish(msg_pwm_high_);
 	// }
 
+#if ROS2_BUILD
 	// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 	rcl_interfaces::msg::SetParametersResult parameters_callback(
 		const std::vector<rclcpp::Parameter> &/* parameters */
@@ -272,7 +349,22 @@ private:
 		return result;
 
 	}
+#endif // ROS2_BUILD
 
+
+#if ROS1_BUILD
+	// publishers
+	ros::Publisher pwm_high_publisher_;
+	ros::Publisher estop_publisher_;
+
+	// pre-allocated messages to publish
+	std_msgs::Bool msg_estop_;
+	f1tenth_race::pwm_high msg_pwm_high_;
+
+	// subscriptions
+	    ros::Subscriber sub_estop;
+	    ros::Subscriber sub_drive_pwm;
+#elif ROS2_BUILD
 	// rclcpp::TimerBase::SharedPtr timer_;
 
 	// publishers
@@ -289,6 +381,7 @@ private:
 
 	// parameters change callback
 	OnSetParametersCallbackHandle::SharedPtr parameters_callback_handle_;
+#endif // ROS2_BUILD
 
 	SerialPort serial_port_;
 	// serial port packet receiving thread
@@ -299,9 +392,17 @@ private:
 
 int main(int argc, char *argv[]) {
 
+#if ROS1_BUILD
+	ros::init(argc, argv, "teensy_drive");
+
+	ros::NodeHandle n("~");
+	std::shared_ptr<TeensyDrive> t = std::make_shared<TeensyDrive>(&n);
+	ros::spin();
+#elif ROS2_BUILD
 	rclcpp::init(argc, argv);
 	rclcpp::spin(std::make_shared<TeensyDrive>());
 	rclcpp::shutdown();
+#endif // ROS2_BUILD
 
 	return 0;
 
