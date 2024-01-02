@@ -15,6 +15,7 @@ static struct packet_handler_with_context packet_handlers[] = {
 	[MESSAGE_DRIVE_PWM] = {NULL, NULL},
 	[MESSAGE_PWM_HIGH] = {NULL, NULL},
 	[MESSAGE_VERSION] = {NULL, NULL},
+	[MESSAGE_ENCODER] = {NULL, NULL},
 };
 
 static int packet_type_to_payload_size(uint8_t type) {
