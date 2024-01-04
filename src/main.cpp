@@ -3,6 +3,8 @@
 #include "std_msgs/Bool.h"
 #include "f1tenth_race/pwm_high.h"
 #include "f1tenth_race/drive_values.h"
+#include "std_msgs/Int32MultiArray.h"
+#include "std_msgs/MultiArrayDimension.h"
 #elif ROS2_BUILD
 #include <chrono>
 #include <functional>
@@ -11,6 +13,8 @@
 #include "std_msgs/msg/bool.hpp"
 #include "teensy_drive_msgs/msg/pwm_high.hpp"
 #include "teensy_drive_msgs/msg/drive_values.hpp"
+//#include "std_msgs/msg/int32multiarray.hpp"
+//#include "std_msgs/msg/multiarraydimension.hpp"
 #endif // ROS2_BUILD
 
 #include <string>
@@ -85,6 +89,20 @@ public:
 			1
 		);
 
+		encoder_publisher_ = n->advertise<std_msgs::Int32MultiArray>(
+			"/sensors/wheel",
+			1
+		);
+
+		msg_encoder_.layout.dim.push_back(std_msgs::MultiArrayDimension());
+		msg_encoder_.layout.dim.push_back(std_msgs::MultiArrayDimension());
+		msg_encoder_.layout.dim[0].size = 4;
+		msg_encoder_.layout.dim[0].stride = 1;
+		msg_encoder_.layout.dim[0].label = "position";
+		msg_encoder_.layout.dim[1].size = 4;
+		msg_encoder_.layout.dim[1].stride = 1;
+		msg_encoder_.layout.dim[1].label = "speed";
+
 		sub_estop = n->subscribe<std_msgs::Bool>(
 			"/eStop",
 			1,
@@ -111,6 +129,10 @@ public:
 			"/eStop",
 			1
 		);
+		/*encoder_publisher_ = create_publisher<std_msgs::msg::Int32MultiArray>(
+			"/sensors/wheel",
+			1
+		);*/
 		estop_subscription_ = create_subscription<std_msgs::msg::Bool>(
 			"/eStop",
 			1,
@@ -183,6 +205,14 @@ private:
 			static_cast<packet_handler>([](const union packet *packet, void *context) {
 				auto _this = reinterpret_cast<TeensyDrive *>(context);
 				_this->handle_version_packet(reinterpret_cast<const struct packet_message_version *>(packet));
+			}),
+			(void *) this
+		);
+		set_packet_handler(
+			MESSAGE_ENCODER,
+			static_cast<packet_handler>([](const union packet *packet, void *context) {
+				auto _this = reinterpret_cast<TeensyDrive *>(context);
+				_this->handle_encoder_packet(reinterpret_cast<const struct packet_message_encoder *>(packet));
 			}),
 			(void *) this
 		);
@@ -306,6 +336,24 @@ private:
 		send_packet(serial_port_.getFd(), reinterpret_cast<union packet *>(&packet));
 	}
 
+	void handle_encoder_packet(const struct packet_message_encoder *msg) {
+		//INFO("handle_encoder_msg: fl=%d fr=%d rl=%d rr=%d", msg->payload.fl_speed, msg->payload.fr_speed, msg->payload.rl_speed, msg->payload.rr_speed);
+		msg_encoder_.data.clear();
+		msg_encoder_.data.emplace_back(msg->payload.fl_position);
+		msg_encoder_.data.emplace_back(msg->payload.fr_position);
+		msg_encoder_.data.emplace_back(msg->payload.rl_position);
+		msg_encoder_.data.emplace_back(msg->payload.rr_position);
+		msg_encoder_.data.emplace_back(msg->payload.fl_speed);
+		msg_encoder_.data.emplace_back(msg->payload.fr_speed);
+		msg_encoder_.data.emplace_back(msg->payload.rl_speed);
+		msg_encoder_.data.emplace_back(msg->payload.rr_speed);
+#if ROS1_BUILD
+		encoder_publisher_.publish(msg_encoder_);
+#elif ROS2_BUILD
+		//encoder_publisher_->publish(msg_encoder_);
+#endif // ROS2_BUILD
+	}
+
 #if ROS1_BUILD
 	void drive_pwm_callback(const f1tenth_race::drive_values::ConstPtr &msg) const {
 #elif ROS2_BUILD
@@ -356,10 +404,12 @@ private:
 	// publishers
 	ros::Publisher pwm_high_publisher_;
 	ros::Publisher estop_publisher_;
+	ros::Publisher encoder_publisher_;
 
 	// pre-allocated messages to publish
 	std_msgs::Bool msg_estop_;
 	f1tenth_race::pwm_high msg_pwm_high_;
+	std_msgs::Int32MultiArray msg_encoder_;
 
 	// subscriptions
 	    ros::Subscriber sub_estop;
@@ -370,10 +420,12 @@ private:
 	// publishers
 	rclcpp::Publisher<teensy_drive_msgs::msg::PwmHigh>::SharedPtr pwm_high_publisher_;
 	rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr estop_publisher_;
+	//rclcpp::Publisher<std_msgs::msg::Int32MultiArray>::SharedPtr encoder_publisher_;
 
 	// pre-allocated messages to publish
 	teensy_drive_msgs::msg::PwmHigh msg_pwm_high_;
 	std_msgs::msg::Bool msg_estop_;
+	//std_msgs::msg::Int32MultiArray msg_encoder_;
 
 	// subscriptions
 	rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr estop_subscription_;
