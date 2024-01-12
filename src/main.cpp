@@ -21,6 +21,7 @@
 #include <thread>
 #include "protocol.h"
 #include "serial_port.hpp"
+#include <math.h>
 
 #include <unistd.h>
 
@@ -95,13 +96,24 @@ public:
 		);
 
 		msg_encoder_.layout.dim.push_back(std_msgs::MultiArrayDimension());
-		msg_encoder_.layout.dim.push_back(std_msgs::MultiArrayDimension());
 		msg_encoder_.layout.dim[0].size = 4;
 		msg_encoder_.layout.dim[0].stride = 1;
 		msg_encoder_.layout.dim[0].label = "position";
+
+		msg_encoder_.layout.dim.push_back(std_msgs::MultiArrayDimension());
 		msg_encoder_.layout.dim[1].size = 4;
 		msg_encoder_.layout.dim[1].stride = 1;
 		msg_encoder_.layout.dim[1].label = "speed";
+
+		msg_encoder_.layout.dim.push_back(std_msgs::MultiArrayDimension());
+		msg_encoder_.layout.dim[2].size = 4;
+		msg_encoder_.layout.dim[2].stride = 1;
+		msg_encoder_.layout.dim[2].label = "speed2";
+
+		msg_encoder_.layout.dim.push_back(std_msgs::MultiArrayDimension());
+		msg_encoder_.layout.dim[3].size = 1;
+		msg_encoder_.layout.dim[3].stride = 1;
+		msg_encoder_.layout.dim[3].label = "speed_vehicle";
 
 		sub_estop = n->subscribe<std_msgs::Bool>(
 			"/eStop",
@@ -337,16 +349,60 @@ private:
 	}
 
 	void handle_encoder_packet(const struct packet_message_encoder *msg) {
-		//INFO("handle_encoder_msg: fl=%d fr=%d rl=%d rr=%d", msg->payload.fl_speed, msg->payload.fr_speed, msg->payload.rl_speed, msg->payload.rr_speed);
+		//INFO("handle_encoder_msg: fl=%d fr=%d rl=%d rr=%d fl=%d fr=%d rl=%d rr=%d", msg->payload.fl_speed, msg->payload.fr_speed, msg->payload.rl_speed, msg->payload.rr_speed, msg->payload.fl_speed2, msg->payload.fr_speed2, msg->payload.rl_speed2, msg->payload.rr_speed2);
+		int car_speed = 0;
+		//                    us->s   2 * teeth     1wheel rotation[m]  m->mm
+		int conversion_ratio = 1e6  /  (2 * 30)  * (2 * M_PI * 0.055) *  1e3 ;
 		msg_encoder_.data.clear();
 		msg_encoder_.data.emplace_back(msg->payload.fl_position);
 		msg_encoder_.data.emplace_back(msg->payload.fr_position);
 		msg_encoder_.data.emplace_back(msg->payload.rl_position);
 		msg_encoder_.data.emplace_back(msg->payload.rr_position);
-		msg_encoder_.data.emplace_back(msg->payload.fl_speed);
-		msg_encoder_.data.emplace_back(msg->payload.fr_speed);
-		msg_encoder_.data.emplace_back(msg->payload.rl_speed);
-		msg_encoder_.data.emplace_back(msg->payload.rr_speed);
+		if (msg->payload.fl_speed != 0) {
+			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.fl_speed);
+		} else {
+			msg_encoder_.data.emplace_back(0);
+		}
+		if (msg->payload.fr_speed != 0) {
+			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.fr_speed);
+		} else {
+			msg_encoder_.data.emplace_back(0);
+		}
+		if (msg->payload.rl_speed != 0) {
+			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.rl_speed);
+		} else {
+			msg_encoder_.data.emplace_back(0);
+		}
+		if (msg->payload.rr_speed != 0) {
+			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.rr_speed);
+		} else {
+			msg_encoder_.data.emplace_back(0);
+		}
+		if (msg->payload.fl_speed2 != 0) {
+			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.fl_speed2);
+			car_speed += conversion_ratio / msg->payload.fl_speed2;
+		} else {
+			msg_encoder_.data.emplace_back(0);
+		}
+		if (msg->payload.fr_speed2 != 0) {
+			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.fr_speed2);
+			car_speed += conversion_ratio / msg->payload.fr_speed2;
+		} else {
+			msg_encoder_.data.emplace_back(0);
+		}
+		if (msg->payload.rl_speed2 != 0) {
+			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.rl_speed2);
+			car_speed += conversion_ratio / msg->payload.rl_speed2;
+		} else {
+			msg_encoder_.data.emplace_back(0);
+		}
+		if (msg->payload.rr_speed2 != 0) {
+			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.rr_speed2);
+			car_speed += conversion_ratio / msg->payload.rr_speed2;
+		} else {
+			msg_encoder_.data.emplace_back(0);
+		}
+		msg_encoder_.data.emplace_back(car_speed / 4);
 #if ROS1_BUILD
 		encoder_publisher_.publish(msg_encoder_);
 #elif ROS2_BUILD
