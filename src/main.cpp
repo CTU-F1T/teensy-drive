@@ -359,46 +359,46 @@ private:
 		msg_encoder_.data.emplace_back(msg->payload.rl_position);
 		msg_encoder_.data.emplace_back(msg->payload.rr_position);
 		if (msg->payload.fl_speed != 0) {
-			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.fl_speed);
+			msg_encoder_.data.emplace_back(msg->payload.fl_speed);
 		} else {
 			msg_encoder_.data.emplace_back(0);
 		}
 		if (msg->payload.fr_speed != 0) {
-			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.fr_speed);
+			msg_encoder_.data.emplace_back(msg->payload.fr_speed);
 		} else {
 			msg_encoder_.data.emplace_back(0);
 		}
 		if (msg->payload.rl_speed != 0) {
-			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.rl_speed);
+			msg_encoder_.data.emplace_back(msg->payload.rl_speed);
 		} else {
 			msg_encoder_.data.emplace_back(0);
 		}
 		if (msg->payload.rr_speed != 0) {
-			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.rr_speed);
+			msg_encoder_.data.emplace_back(msg->payload.rr_speed);
 		} else {
 			msg_encoder_.data.emplace_back(0);
 		}
 		if (msg->payload.fl_speed2 != 0) {
-			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.fl_speed2);
-			car_speed += conversion_ratio / msg->payload.fl_speed2;
+			msg_encoder_.data.emplace_back(msg->payload.fl_speed2);
+			car_speed += msg->payload.fl_speed2;
 		} else {
 			msg_encoder_.data.emplace_back(0);
 		}
 		if (msg->payload.fr_speed2 != 0) {
-			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.fr_speed2);
-			car_speed += conversion_ratio / msg->payload.fr_speed2;
+			msg_encoder_.data.emplace_back(msg->payload.fr_speed2);
+			car_speed += msg->payload.fr_speed2;
 		} else {
 			msg_encoder_.data.emplace_back(0);
 		}
 		if (msg->payload.rl_speed2 != 0) {
-			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.rl_speed2);
-			car_speed += conversion_ratio / msg->payload.rl_speed2;
+			msg_encoder_.data.emplace_back(msg->payload.rl_speed2);
+			car_speed += msg->payload.rl_speed2;
 		} else {
 			msg_encoder_.data.emplace_back(0);
 		}
 		if (msg->payload.rr_speed2 != 0) {
-			msg_encoder_.data.emplace_back(conversion_ratio / msg->payload.rr_speed2);
-			car_speed += conversion_ratio / msg->payload.rr_speed2;
+			msg_encoder_.data.emplace_back(msg->payload.rr_speed2);
+			car_speed += msg->payload.rr_speed2;
 		} else {
 			msg_encoder_.data.emplace_back(0);
 		}
