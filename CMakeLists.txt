@@ -29,6 +29,9 @@ endif()
 
 set(dep_pkgs
     std_msgs
+    geometry_msgs
+    nav_msgs
+    tf2
 )
 
 set(dep_ros1_pkgs
